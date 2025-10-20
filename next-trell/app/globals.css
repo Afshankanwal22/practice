@@ -35,12 +35,7 @@ body {
   justify-content: center;
   align-items: flex-start;
   padding: 2rem;
-  background: radial-gradient(circle at 15% 20%, #6a11cb, transparent 40%),
-              radial-gradient(circle at 85% 80%, #2575fc, transparent 40%),
-              linear-gradient(135deg, #141e30, #243b55, #0f2027);
-  background-attachment: fixed;
-  background-size: 200% 200%;
-  animation: moveGradient 25s ease infinite;
+
 }
 
 

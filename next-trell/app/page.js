@@ -1,5 +1,11 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
+import { supabase } from "../lib/supabaseClient";
+import {
+  Plus, Mic, StopCircle, Image, PenTool, Clock, Save, Edit,
+  Trash2, CheckCircle2, LogOut, Search
+} from "lucide-react";
+import { useRouter } from "next/navigation";
 
 export default function SmartNotes() {
   const [notes, setNotes] = useState([]);
@@ -9,62 +15,79 @@ export default function SmartNotes() {
   const [imageURL, setImageURL] = useState(null);
   const [drawingURL, setDrawingURL] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [search, setSearch] = useState("");
   const mediaRecorderRef = useRef(null);
   const audioChunks = useRef([]);
+  const router = useRouter();
 
+  // 🧩 Load notes when logged in
   useEffect(() => {
-    const saved = localStorage.getItem("notes");
-    if (saved) setNotes(JSON.parse(saved));
+    checkSession();
+    fetchNotes();
   }, []);
 
-  useEffect(() => {
-    localStorage.setItem("notes", JSON.stringify(notes));
-  }, [notes]);
+  async function checkSession() {
+    const { data } = await supabase.auth.getSession();
+    if (!data.session) {
+      router.push("/login");
+    }
+  }
 
-  // 🎙️ Voice Recording
+  async function fetchNotes() {
+    const { data, error } = await supabase
+      .from("notes")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (error) console.error("Error fetching notes:", error);
+    else setNotes(data || []);
+  }
+
+  // 🎙️ Audio Recorder
   const startRecording = async () => {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    mediaRecorderRef.current = new MediaRecorder(stream);
-    mediaRecorderRef.current.start();
-    setIsRecording(true);
-    audioChunks.current = [];
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorderRef.current = new MediaRecorder(stream);
+      audioChunks.current = [];
+      mediaRecorderRef.current.start();
+      setIsRecording(true);
 
-    mediaRecorderRef.current.ondataavailable = (e) => {
-      audioChunks.current.push(e.data);
-    };
-
-    mediaRecorderRef.current.onstop = () => {
-      const blob = new Blob(audioChunks.current, { type: "audio/mp3" });
-      const url = URL.createObjectURL(blob);
-      setAudioURL(url);
-      setIsRecording(false);
-    };
+      mediaRecorderRef.current.ondataavailable = (e) =>
+        audioChunks.current.push(e.data);
+      mediaRecorderRef.current.onstop = () => {
+        const blob = new Blob(audioChunks.current, { type: "audio/mp3" });
+        const url = URL.createObjectURL(blob);
+        setAudioURL(url);
+        setIsRecording(false);
+      };
+    } catch {
+      alert("🎤 Please allow microphone access");
+    }
   };
 
-  const stopRecording = () => {
-    mediaRecorderRef.current.stop();
-  };
+  const stopRecording = () => mediaRecorderRef.current?.stop();
 
-  // 📸 Add Image Note
+  // 🖼️ Image upload (preview only)
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (file) setImageURL(URL.createObjectURL(file));
   };
 
-  // 🎨 Drawing Canvas
+  // ✏️ Drawing Pad
   const openDrawingPad = () => {
     const canvas = document.createElement("canvas");
     canvas.width = 400;
     canvas.height = 300;
-    canvas.style.border = "1px solid white";
     const ctx = canvas.getContext("2d");
     let drawing = false;
+    canvas.style.border = "1px solid #ddd";
+    canvas.style.borderRadius = "8px";
 
     canvas.addEventListener("mousedown", () => (drawing = true));
     canvas.addEventListener("mouseup", () => (drawing = false));
     canvas.addEventListener("mousemove", (e) => {
       if (!drawing) return;
-      ctx.fillStyle = "white";
+      ctx.fillStyle = "#111";
       ctx.beginPath();
       ctx.arc(e.offsetX, e.offsetY, 2, 0, Math.PI * 2);
       ctx.fill();
@@ -72,38 +95,36 @@ export default function SmartNotes() {
 
     const saveBtn = document.createElement("button");
     saveBtn.innerText = "Save Drawing";
-    saveBtn.style.marginTop = "10px";
+    saveBtn.className =
+      "mt-3 px-4 py-2 bg-black text-white rounded-md hover:bg-gray-800 transition";
     saveBtn.onclick = () => {
       setDrawingURL(canvas.toDataURL());
       document.body.removeChild(container);
     };
 
     const container = document.createElement("div");
-    container.style.position = "fixed";
-    container.style.top = "50%";
-    container.style.left = "50%";
-    container.style.transform = "translate(-50%, -50%)";
-    container.style.zIndex = 1000;
-    container.style.background = "rgba(0,0,0,0.8)";
-    container.style.padding = "20px";
-    container.style.borderRadius = "12px";
+    Object.assign(container.style, {
+      position: "fixed",
+      top: "50%",
+      left: "50%",
+      transform: "translate(-50%, -50%)",
+      background: "#fff",
+      padding: "20px",
+      borderRadius: "12px",
+      boxShadow: "0 0 20px rgba(0,0,0,0.3)",
+      zIndex: 9999,
+    });
+
     container.appendChild(canvas);
     container.appendChild(saveBtn);
     document.body.appendChild(container);
   };
 
-  // ➕ Add note
-  const addNote = () => {
-    if (
-      newNote.trim() === "" &&
-      !audioURL &&
-      !imageURL &&
-      !drawingURL
-    )
-      return;
+  // ➕ Add or Update Note
+  async function addOrUpdateNote() {
+    if (!newNote.trim() && !audioURL && !imageURL && !drawingURL) return;
 
-    const newEntry = {
-      id: Date.now(),
+    const note = {
       text: newNote,
       audio: audioURL,
       image: imageURL,
@@ -112,157 +133,184 @@ export default function SmartNotes() {
       completed: false,
     };
 
-    setNotes([...notes, newEntry]);
+    if (editingId) {
+      await supabase.from("notes").update(note).eq("id", editingId);
+      setEditingId(null);
+    } else {
+      await supabase.from("notes").insert([note]);
+    }
+
     setNewNote("");
     setAudioURL(null);
     setImageURL(null);
     setDrawingURL(null);
     setReminder("");
+    fetchNotes();
+  }
+
+  async function toggleComplete(id, status) {
+    await supabase.from("notes").update({ completed: !status }).eq("id", id);
+    fetchNotes();
+  }
+
+  async function deleteNote(id) {
+    await supabase.from("notes").delete().eq("id", id);
+    fetchNotes();
+  }
+
+  const editNote = (note) => {
+    setEditingId(note.id);
+    setNewNote(note.text);
+    setAudioURL(note.audio);
+    setImageURL(note.image);
+    setDrawingURL(note.drawing);
+    setReminder(note.reminder || "");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const toggleComplete = (id) => {
-    setNotes(
-      notes.map((n) =>
-        n.id === id ? { ...n, completed: !n.completed } : n
-      )
-    );
-  };
+  const filteredNotes = notes.filter((n) =>
+    n.text?.toLowerCase().includes(search.toLowerCase())
+  );
 
-  const deleteNote = (id) => setNotes(notes.filter((n) => n.id !== id));
+  // 🚪 Logout Function
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.push("/login");
+  };
 
   return (
-    <div className="max-w-4xl mx-auto p-6 text-white">
-      <h1 className="text-4xl font-bold text-center mb-6 bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-        ✨ Smart Notepad
-      </h1>
+    <div className="min-h-screen bg-gradient-to-br from-[#e0e7ff] via-[#f5f7fa] to-[#e2eafc] text-[#222] p-8 font-[Poppins] relative overflow-hidden">
+      <div className="max-w-5xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between mb-10 gap-4">
+        <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-gray-800">
+          🧠 SmartNotes
+        </h1>
 
-      {/* Add Section */}
-      <div className="bg-white/10 p-6 rounded-2xl backdrop-blur border border-white/20 mb-6 space-y-4">
+        {/* 🚪 Logout Button */}
+        <button
+  onClick={handleLogout}
+  className="absolute top-8 right-8 px-5 py-2 rounded-full font-semibold text-gray-700 bg-white/70 border border-gray-300 shadow-sm backdrop-blur-md hover:bg-blue-500 hover:text-white transition-all duration-300"
+>
+  Logout
+</button>
+
+      </div>
+
+      {/* Editor */}
+      <div className="max-w-5xl mx-auto bg-white/80 backdrop-blur-md p-6 rounded-2xl border border-gray-200 shadow-md">
         <textarea
           value={newNote}
           onChange={(e) => setNewNote(e.target.value)}
-          placeholder="Write a note..."
-          className="note-input h-24 resize-none"
+          placeholder={editingId ? "✏️ Edit your note..." : "📝 Write your note..."}
+          className="w-full h-28 p-3 rounded-lg bg-gray-50 border border-gray-200 focus:ring-2 focus:ring-blue-400 outline-none resize-none"
         />
-
-        <div className="flex flex-wrap gap-3">
-          {/* 🎙️ Voice */}
+        <div className="flex flex-wrap gap-3 mt-4 items-center">
           {!isRecording ? (
             <button
               onClick={startRecording}
-              className="px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-500"
+              className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-400 transition"
             >
-              🎙️ Record
+              <Mic size={16} /> Record
             </button>
           ) : (
             <button
               onClick={stopRecording}
-              className="px-4 py-2 bg-red-600 rounded-lg hover:bg-red-500"
+              className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-400 transition"
             >
-              ⏹️ Stop
+              <StopCircle size={16} /> Stop
             </button>
           )}
 
-          {/* 📸 Image */}
-          <label className="px-4 py-2 bg-green-600 rounded-lg cursor-pointer hover:bg-green-500">
-            📸 Image
-            <input
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={handleImageUpload}
-            />
+          <label className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg cursor-pointer hover:bg-green-400 transition">
+            <Image size={16} /> Image
+            <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
           </label>
 
-          {/* 🎨 Drawing */}
           <button
             onClick={openDrawingPad}
-            className="px-4 py-2 bg-purple-600 rounded-lg hover:bg-purple-500"
+            className="flex items-center gap-2 px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-400 transition"
           >
-            🎨 Draw
+            <PenTool size={16} /> Draw
           </button>
 
-          {/* 📅 Reminder */}
-          <input
-            type="datetime-local"
-            value={reminder}
-            onChange={(e) => setReminder(e.target.value)}
-            className="note-input max-w-[220px]"
-          />
+          <div className="flex items-center gap-2 text-sm">
+            <Clock size={16} className="text-gray-600" />
+            <input
+              type="datetime-local"
+              value={reminder}
+              onChange={(e) => setReminder(e.target.value)}
+              className="bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-gray-600 focus:ring-2 focus:ring-blue-400 outline-none"
+            />
+          </div>
 
           <button
-            onClick={addNote}
-            className="px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-500 rounded-lg hover:opacity-90"
+            onClick={addOrUpdateNote}
+            className={`ml-auto flex items-center gap-2 px-6 py-2 rounded-lg font-semibold transition ${
+              editingId ? "bg-yellow-500 hover:bg-yellow-400" : "bg-blue-600 hover:bg-blue-500"
+            } text-white`}
           >
-            ➕ Add Note
+            {editingId ? <Save size={18} /> : <Plus size={18} />}
+            {editingId ? "Update" : "Save Note"}
           </button>
         </div>
       </div>
 
-      {/* Notes List */}
-      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {notes.map((note) => (
-          <div
-            key={note.id}
-            className={`bg-white/10 p-4 rounded-xl border border-white/20 backdrop-blur hover:shadow-xl transition ${
-              note.completed ? "opacity-50" : ""
-            }`}
-          >
-            <p
-              className={`whitespace-pre-wrap ${
-                note.completed ? "line-through" : ""
+      {/* Notes Grid */}
+      <div className="max-w-5xl mx-auto mt-10 grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        {filteredNotes.length === 0 ? (
+          <p className="text-center text-gray-500 col-span-full">No notes found.</p>
+        ) : (
+          filteredNotes.map((note) => (
+            <div
+              key={note.id}
+              className={`bg-white/80 backdrop-blur-md border border-gray-200 rounded-2xl p-5 shadow-md hover:shadow-lg transition ${
+                note.completed ? "opacity-60" : ""
               }`}
             >
-              {note.text}
-            </p>
-
-            {note.audio && (
-              <audio controls className="w-full mt-3">
-                <source src={note.audio} type="audio/mp3" />
-              </audio>
-            )}
-
-            {note.image && (
-              <img
-                src={note.image}
-                alt="note"
-                className="mt-3 rounded-lg"
-              />
-            )}
-
-            {note.drawing && (
-              <img
-                src={note.drawing}
-                alt="drawing"
-                className="mt-3 rounded-lg"
-              />
-            )}
-
-            {note.reminder && (
-              <p className="text-sm mt-2 text-blue-400">
-                ⏰ Reminder:{" "}
-                {new Date(note.reminder).toLocaleString()}
+              <p
+                className={`text-gray-800 whitespace-pre-wrap text-sm leading-relaxed ${
+                  note.completed ? "line-through text-gray-400" : ""
+                }`}
+              >
+                {note.text || "🗣️ (Voice or Image note)"}
               </p>
-            )}
 
-            <div className="flex justify-between items-center mt-3">
-              <button
-                onClick={() => toggleComplete(note.id)}
-                className="text-green-400 hover:text-green-300"
-              >
-                {note.completed ? "✔️ Done" : "✅ Mark Done"}
-              </button>
+              {note.audio && <audio controls className="w-full mt-3 rounded-lg" src={note.audio} />}
+              {note.image && <img src={note.image} alt="note" className="mt-3 rounded-lg w-full" />}
+              {note.drawing && <img src={note.drawing} alt="drawing" className="mt-3 rounded-lg w-full" />}
+              {note.reminder && (
+                <p className="text-xs mt-2 text-blue-500 font-medium">
+                  ⏰ Reminder: {new Date(note.reminder).toLocaleString()}
+                </p>
+              )}
 
-              <button
-                onClick={() => deleteNote(note.id)}
-                className="text-red-400 hover:text-red-300"
-              >
-                🗑️
-              </button>
+              <div className="flex justify-between items-center mt-4 text-sm">
+                <button
+                  onClick={() => toggleComplete(note.id, note.completed)}
+                  className="flex items-center gap-1 text-green-600 hover:text-green-500"
+                >
+                  <CheckCircle2 size={16} />
+                  {note.completed ? "Done" : "Mark Done"}
+                </button>
+                <div className="flex gap-3">
+                  <button onClick={() => editNote(note)} className="text-yellow-500 hover:text-yellow-400">
+                    <Edit size={16} />
+                  </button>
+                  <button onClick={() => deleteNote(note.id)} className="text-red-500 hover:text-red-400">
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
-        ))}
+          ))
+        )}
       </div>
+
+      <button
+        onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+        className="fixed bottom-8 right-8 bg-blue-600 text-white rounded-full shadow-xl hover:bg-blue-500 w-14 h-14 flex items-center justify-center transition"
+      >
+        <Plus size={24} />
+      </button>
     </div>
   );
 }
