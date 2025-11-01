@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from "framer-motion";
 
 export default function NotesPage() {
   const [notes, setNotes] = useState([]);
-  const [editingNote, setEditingNote] = useState(null); // for inline edit
+  const [editingNote, setEditingNote] = useState(null);
   const [editedText, setEditedText] = useState({ Title: "", Description: "" });
   const router = useRouter();
 
@@ -84,7 +84,7 @@ export default function NotesPage() {
 
   return (
     <div className="min-h-screen w-full bg-gradient-to-br from-[#dbeafe] via-[#eff6ff] to-[#e0f2fe] font-[Poppins] p-8 overflow-y-auto relative">
-      {/* Background Animation Layer */}
+      {/* 🌈 Background Animation */}
       <div className="absolute inset-0 bg-gradient-to-br from-blue-200 via-indigo-100 to-purple-200 animate-[gradientMove_10s_ease_infinite] bg-[length:400%_400%] -z-10"></div>
 
       {/* Header */}
@@ -94,7 +94,7 @@ export default function NotesPage() {
         </h1>
         <button
           onClick={() => router.push("/")}
-          className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-500 transition-all shadow-md hover:shadow-lg active:scale-95"
+          className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:opacity-90 transition-all shadow-md hover:shadow-lg active:scale-95"
         >
           <Plus size={18} /> Add Note
         </button>
@@ -146,7 +146,7 @@ export default function NotesPage() {
                     />
                     <button
                       onClick={() => saveEdit(note.id)}
-                      className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-500 transition-all shadow-md hover:shadow-lg"
+                      className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:opacity-90 transition-all shadow-md hover:shadow-lg"
                     >
                       <Save size={16} /> Save
                     </button>
@@ -158,6 +158,7 @@ export default function NotesPage() {
                     </h3>
                     <p className="text-gray-700 text-sm mb-3">{note.Description}</p>
 
+                    {/* 🖼️ Optional Image */}
                     {note.image && (
                       <img
                         src={note.image}
@@ -165,6 +166,8 @@ export default function NotesPage() {
                         className="rounded-lg w-full mb-3 shadow-sm"
                       />
                     )}
+
+                    {/* 🎨 Optional Drawing */}
                     {note.drawing && (
                       <img
                         src={note.drawing}
@@ -172,6 +175,17 @@ export default function NotesPage() {
                         className="rounded-lg w-full mb-3 shadow-sm"
                       />
                     )}
+
+                    {/* 🎧 Audio Player */}
+                    {note.audio && (
+                      <audio
+                        controls
+                        src={note.audio}
+                        className="w-full mt-3 rounded-lg shadow-sm"
+                      />
+                    )}
+
+                    {/* ⏰ Reminder */}
                     {note.remainder && (
                       <p className="text-xs text-blue-500 mb-2">
                         ⏰ {new Date(note.remainder).toLocaleString()}

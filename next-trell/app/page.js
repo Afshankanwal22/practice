@@ -25,6 +25,7 @@ export default function AddNotePage() {
     audioChunks.current = [];
     mediaRecorderRef.current.start();
     setIsRecording(true);
+
     mediaRecorderRef.current.ondataavailable = (e) => audioChunks.current.push(e.data);
     mediaRecorderRef.current.onstop = () => {
       const blob = new Blob(audioChunks.current, { type: "audio/mp3" });
@@ -87,15 +88,24 @@ export default function AddNotePage() {
     document.body.appendChild(container);
   };
 
-  // 💾 Save note
+  // 💾 Save note with user_id
   const saveNote = async () => {
     if (!title && !description) {
       Swal.fire("Add something!", "Please write a title or note.", "info");
       return;
     }
 
+    // ✅ Get current user
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      Swal.fire("Login Required", "Please login first to save your note.", "warning");
+      return;
+    }
+
+    // ✅ Insert note with user_id
     const { error } = await supabase.from("NotePad").insert([
       {
+        user_id: user.id, // Important: Required by RLS
         Title: title,
         Description: description,
         remainder: reminder,
