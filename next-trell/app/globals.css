@@ -143,3 +143,20 @@ input:focus {
   transform: scale(1.03);
   background: rgba(255, 255, 255, 0.25);
 }
+@keyframes gradientFlow {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.animated-background {
+  background: linear-gradient(-45deg, #c9d6ff, #e2ebf0, #f5f7fa, #d7e1ec);
+  background-size: 400% 400%;
+  animation: gradientFlow 12s ease infinite;
+}

@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Swal from "sweetalert2";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -18,20 +19,70 @@ export default function LoginPage() {
     })();
   }, [router]);
 
+  // ✅ Login handler with SweetAlert2
   async function handleLogin(e) {
     e.preventDefault();
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
     setLoading(false);
+
     if (error) {
-      alert(error.message);
+      Swal.fire({
+        icon: "error",
+        title: "Login Failed!",
+        text: error.message || "Please check your email and password.",
+        confirmButtonColor: "#6366f1",
+        background: "#fefefe",
+        backdrop: `rgba(0,0,0,0.4)`,
+      });
     } else {
-      router.push("/smartnotes");
+      Swal.fire({
+        icon: "success",
+        title: "Login Successful 🎉",
+        text: "Welcome back to SmartNotes!",
+        showConfirmButton: false,
+        timer: 1800,
+        background: "#ffffff",
+        backdrop: `rgba(0,0,0,0.3)`,
+      });
+
+      setTimeout(() => router.push("/"), 1800);
+    }
+  }
+
+  // ✅ Magic link handler with SweetAlert
+  async function handleMagicLink(e) {
+    e.preventDefault();
+    const emailPrompt = prompt("Enter your email for a magic link:");
+    if (!emailPrompt) return;
+
+    const { error } = await supabase.auth.signInWithOtp({ email: emailPrompt });
+
+    if (error) {
+      Swal.fire({
+        icon: "error",
+        title: "Magic Link Failed",
+        text: error.message,
+        confirmButtonColor: "#6366f1",
+      });
+    } else {
+      Swal.fire({
+        icon: "info",
+        title: "Check Your Email 📧",
+        text: "A magic login link has been sent to your inbox!",
+        confirmButtonColor: "#6366f1",
+      });
     }
   }
 
   return (
-    <div className="h-screen w-screen flex items-center justify-center bg-gradient-to-br from-[#cfd9df] via-[#e2ebf0] to-[#f5f7fa] relative overflow-hidden">
+    <div className="min-h-screen w-screen flex items-center justify-center bg-gradient-to-br from-[#cfd9df] via-[#e2ebf0] to-[#f5f7fa] relative overflow-hidden py-12 sm:py-20">
+
       {/* Background blur layer */}
       <div className="absolute inset-0 bg-gradient-to-br from-indigo-300/20 to-blue-200/30 backdrop-blur-3xl pointer-events-none"></div>
 
@@ -63,6 +114,7 @@ export default function LoginPage() {
           Sign in to access your SmartNotes
         </p>
 
+        {/* Form */}
         <form onSubmit={handleLogin} className="flex flex-col gap-5 pointer-events-auto">
           <div>
             <label
@@ -114,15 +166,8 @@ export default function LoginPage() {
             Create account
           </Link>
           <a
-            href="#"
-            onClick={async (e) => {
-              e.preventDefault();
-              const emailPrompt = prompt("Enter your email for a magic link:");
-              if (!emailPrompt) return;
-              const { error } = await supabase.auth.signInWithOtp({ email: emailPrompt });
-              if (error) alert(error.message);
-              else alert("Check your email for the magic link.");
-            }}
+            href="signup"
+            onClick={handleMagicLink}
             className="hover:underline"
           >
             Magic link

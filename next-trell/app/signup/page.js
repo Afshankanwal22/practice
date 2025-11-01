@@ -44,7 +44,7 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="h-screen w-screen flex items-center justify-center bg-gradient-to-br from-[#cfd9df] via-[#e2ebf0] to-[#f5f7fa] relative overflow-hidden">
+    <div className="min-h-screen w-screen flex items-center justify-center bg-gradient-to-br from-[#cfd9df] via-[#e2ebf0] to-[#f5f7fa] relative overflow-hidden">
       {/* Background blur layer */}
       <div className="absolute inset-0 bg-gradient-to-br from-indigo-300/20 to-blue-200/30 backdrop-blur-3xl pointer-events-none"></div>
 

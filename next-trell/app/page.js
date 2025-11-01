@@ -1,73 +1,42 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef } from "react";
 import { supabase } from "../lib/supabaseClient";
-import {
-  Plus, Mic, StopCircle, Image, PenTool, Clock, Save, Edit,
-  Trash2, CheckCircle2, LogOut, Search
-} from "lucide-react";
+import { Mic, StopCircle, Image, PenTool, Clock, Save } from "lucide-react";
+import Swal from "sweetalert2";
 import { useRouter } from "next/navigation";
+import { motion } from "framer-motion";
 
-export default function SmartNotes() {
-  const [notes, setNotes] = useState([]);
-  const [newNote, setNewNote] = useState("");
+export default function AddNotePage() {
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
   const [reminder, setReminder] = useState("");
   const [audioURL, setAudioURL] = useState(null);
   const [imageURL, setImageURL] = useState(null);
   const [drawingURL, setDrawingURL] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
-  const [editingId, setEditingId] = useState(null);
-  const [search, setSearch] = useState("");
   const mediaRecorderRef = useRef(null);
   const audioChunks = useRef([]);
   const router = useRouter();
 
-  // 🧩 Load notes when logged in
-  useEffect(() => {
-    checkSession();
-    fetchNotes();
-  }, []);
-
-  async function checkSession() {
-    const { data } = await supabase.auth.getSession();
-    if (!data.session) {
-      router.push("/login");
-    }
-  }
-
-  async function fetchNotes() {
-    const { data, error } = await supabase
-      .from("notes")
-      .select("*")
-      .order("created_at", { ascending: false });
-    if (error) console.error("Error fetching notes:", error);
-    else setNotes(data || []);
-  }
-
-  // 🎙️ Audio Recorder
+  // 🎙️ Start recording
   const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorderRef.current = new MediaRecorder(stream);
-      audioChunks.current = [];
-      mediaRecorderRef.current.start();
-      setIsRecording(true);
-
-      mediaRecorderRef.current.ondataavailable = (e) =>
-        audioChunks.current.push(e.data);
-      mediaRecorderRef.current.onstop = () => {
-        const blob = new Blob(audioChunks.current, { type: "audio/mp3" });
-        const url = URL.createObjectURL(blob);
-        setAudioURL(url);
-        setIsRecording(false);
-      };
-    } catch {
-      alert("🎤 Please allow microphone access");
-    }
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorderRef.current = new MediaRecorder(stream);
+    audioChunks.current = [];
+    mediaRecorderRef.current.start();
+    setIsRecording(true);
+    mediaRecorderRef.current.ondataavailable = (e) => audioChunks.current.push(e.data);
+    mediaRecorderRef.current.onstop = () => {
+      const blob = new Blob(audioChunks.current, { type: "audio/mp3" });
+      const url = URL.createObjectURL(blob);
+      setAudioURL(url);
+      setIsRecording(false);
+    };
   };
 
   const stopRecording = () => mediaRecorderRef.current?.stop();
 
-  // 🖼️ Image upload (preview only)
+  // 📸 Image upload
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (file) setImageURL(URL.createObjectURL(file));
@@ -80,8 +49,6 @@ export default function SmartNotes() {
     canvas.height = 300;
     const ctx = canvas.getContext("2d");
     let drawing = false;
-    canvas.style.border = "1px solid #ddd";
-    canvas.style.borderRadius = "8px";
 
     canvas.addEventListener("mousedown", () => (drawing = true));
     canvas.addEventListener("mouseup", () => (drawing = false));
@@ -96,7 +63,7 @@ export default function SmartNotes() {
     const saveBtn = document.createElement("button");
     saveBtn.innerText = "Save Drawing";
     saveBtn.className =
-      "mt-3 px-4 py-2 bg-black text-white rounded-md hover:bg-gray-800 transition";
+      "mt-3 px-4 py-2 bg-black text-white rounded-md hover:bg-gray-800";
     saveBtn.onclick = () => {
       setDrawingURL(canvas.toDataURL());
       document.body.removeChild(container);
@@ -111,7 +78,7 @@ export default function SmartNotes() {
       background: "#fff",
       padding: "20px",
       borderRadius: "12px",
-      boxShadow: "0 0 20px rgba(0,0,0,0.3)",
+      boxShadow: "0 0 20px rgba(0,0,0,0.15)",
       zIndex: 9999,
     });
 
@@ -120,197 +87,168 @@ export default function SmartNotes() {
     document.body.appendChild(container);
   };
 
-  // ➕ Add or Update Note
-  async function addOrUpdateNote() {
-    if (!newNote.trim() && !audioURL && !imageURL && !drawingURL) return;
-
-    const note = {
-      text: newNote,
-      audio: audioURL,
-      image: imageURL,
-      drawing: drawingURL,
-      reminder,
-      completed: false,
-    };
-
-    if (editingId) {
-      await supabase.from("notes").update(note).eq("id", editingId);
-      setEditingId(null);
-    } else {
-      await supabase.from("notes").insert([note]);
+  // 💾 Save note
+  const saveNote = async () => {
+    if (!title && !description) {
+      Swal.fire("Add something!", "Please write a title or note.", "info");
+      return;
     }
 
-    setNewNote("");
-    setAudioURL(null);
-    setImageURL(null);
-    setDrawingURL(null);
-    setReminder("");
-    fetchNotes();
-  }
+    const { error } = await supabase.from("NotePad").insert([
+      {
+        Title: title,
+        Description: description,
+        remainder: reminder,
+        audio: audioURL,
+        image: imageURL,
+        drawing: drawingURL,
+        completed: false,
+      },
+    ]);
 
-  async function toggleComplete(id, status) {
-    await supabase.from("notes").update({ completed: !status }).eq("id", id);
-    fetchNotes();
-  }
-
-  async function deleteNote(id) {
-    await supabase.from("notes").delete().eq("id", id);
-    fetchNotes();
-  }
-
-  const editNote = (note) => {
-    setEditingId(note.id);
-    setNewNote(note.text);
-    setAudioURL(note.audio);
-    setImageURL(note.image);
-    setDrawingURL(note.drawing);
-    setReminder(note.reminder || "");
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const filteredNotes = notes.filter((n) =>
-    n.text?.toLowerCase().includes(search.toLowerCase())
-  );
-
-  // 🚪 Logout Function
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    router.push("/login");
+    if (error) Swal.fire("Error", error.message, "error");
+    else {
+      Swal.fire("Saved!", "Your note has been added successfully.", "success");
+      router.push("/AddPost");
+    }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#e0e7ff] via-[#f5f7fa] to-[#e2eafc] text-[#222] p-8 font-[Poppins] relative overflow-hidden">
-      <div className="max-w-5xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between mb-10 gap-4">
-        <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-gray-800">
-          🧠 SmartNotes
-        </h1>
-
-        {/* 🚪 Logout Button */}
-        <button
-  onClick={handleLogout}
-  className="absolute top-8 right-8 px-5 py-2 rounded-full font-semibold text-gray-700 bg-white/70 border border-gray-300 shadow-sm backdrop-blur-md hover:bg-blue-500 hover:text-white transition-all duration-300"
->
-  Logout
-</button>
-
-      </div>
-
-      {/* Editor */}
-      <div className="max-w-5xl mx-auto bg-white/80 backdrop-blur-md p-6 rounded-2xl border border-gray-200 shadow-md">
-        <textarea
-          value={newNote}
-          onChange={(e) => setNewNote(e.target.value)}
-          placeholder={editingId ? "✏️ Edit your note..." : "📝 Write your note..."}
-          className="w-full h-28 p-3 rounded-lg bg-gray-50 border border-gray-200 focus:ring-2 focus:ring-blue-400 outline-none resize-none"
-        />
-        <div className="flex flex-wrap gap-3 mt-4 items-center">
-          {!isRecording ? (
-            <button
-              onClick={startRecording}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-400 transition"
-            >
-              <Mic size={16} /> Record
-            </button>
-          ) : (
-            <button
-              onClick={stopRecording}
-              className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-400 transition"
-            >
-              <StopCircle size={16} /> Stop
-            </button>
-          )}
-
-          <label className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg cursor-pointer hover:bg-green-400 transition">
-            <Image size={16} /> Image
-            <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
-          </label>
-
-          <button
-            onClick={openDrawingPad}
-            className="flex items-center gap-2 px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-400 transition"
-          >
-            <PenTool size={16} /> Draw
-          </button>
-
-          <div className="flex items-center gap-2 text-sm">
-            <Clock size={16} className="text-gray-600" />
-            <input
-              type="datetime-local"
-              value={reminder}
-              onChange={(e) => setReminder(e.target.value)}
-              className="bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-gray-600 focus:ring-2 focus:ring-blue-400 outline-none"
-            />
-          </div>
-
-          <button
-            onClick={addOrUpdateNote}
-            className={`ml-auto flex items-center gap-2 px-6 py-2 rounded-lg font-semibold transition ${
-              editingId ? "bg-yellow-500 hover:bg-yellow-400" : "bg-blue-600 hover:bg-blue-500"
-            } text-white`}
-          >
-            {editingId ? <Save size={18} /> : <Plus size={18} />}
-            {editingId ? "Update" : "Save Note"}
-          </button>
-        </div>
-      </div>
-
-      {/* Notes Grid */}
-      <div className="max-w-5xl mx-auto mt-10 grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredNotes.length === 0 ? (
-          <p className="text-center text-gray-500 col-span-full">No notes found.</p>
-        ) : (
-          filteredNotes.map((note) => (
-            <div
-              key={note.id}
-              className={`bg-white/80 backdrop-blur-md border border-gray-200 rounded-2xl p-5 shadow-md hover:shadow-lg transition ${
-                note.completed ? "opacity-60" : ""
-              }`}
-            >
-              <p
-                className={`text-gray-800 whitespace-pre-wrap text-sm leading-relaxed ${
-                  note.completed ? "line-through text-gray-400" : ""
-                }`}
-              >
-                {note.text || "🗣️ (Voice or Image note)"}
-              </p>
-
-              {note.audio && <audio controls className="w-full mt-3 rounded-lg" src={note.audio} />}
-              {note.image && <img src={note.image} alt="note" className="mt-3 rounded-lg w-full" />}
-              {note.drawing && <img src={note.drawing} alt="drawing" className="mt-3 rounded-lg w-full" />}
-              {note.reminder && (
-                <p className="text-xs mt-2 text-blue-500 font-medium">
-                  ⏰ Reminder: {new Date(note.reminder).toLocaleString()}
-                </p>
-              )}
-
-              <div className="flex justify-between items-center mt-4 text-sm">
-                <button
-                  onClick={() => toggleComplete(note.id, note.completed)}
-                  className="flex items-center gap-1 text-green-600 hover:text-green-500"
-                >
-                  <CheckCircle2 size={16} />
-                  {note.completed ? "Done" : "Mark Done"}
-                </button>
-                <div className="flex gap-3">
-                  <button onClick={() => editNote(note)} className="text-yellow-500 hover:text-yellow-400">
-                    <Edit size={16} />
-                  </button>
-                  <button onClick={() => deleteNote(note.id)} className="text-red-500 hover:text-red-400">
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-
-      <button
-        onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-        className="fixed bottom-8 right-8 bg-blue-600 text-white rounded-full shadow-xl hover:bg-blue-500 w-14 h-14 flex items-center justify-center transition"
+    <motion.div
+      className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#e3f2fd] via-[#f5f7fa] to-[#e1e6f9] p-6"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.8 }}
+    >
+      <motion.div
+        initial={{ scale: 0.9, opacity: 0, y: 50 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        transition={{ duration: 0.8, type: "spring" }}
+        className="w-full max-w-3xl bg-white/80 backdrop-blur-lg rounded-3xl shadow-2xl border border-gray-200 p-10 relative"
       >
-        <Plus size={24} />
-      </button>
-    </div>
+        <motion.h1
+          initial={{ y: -20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ delay: 0.2 }}
+          className="text-4xl font-semibold text-gray-800 mb-8 text-center"
+        >
+          📝 Create a New Note
+        </motion.h1>
+
+        <div className="space-y-5">
+          <motion.input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Enter Title..."
+            className="w-full p-4 border border-gray-300 rounded-xl text-gray-800 placeholder-gray-400 focus:ring-2 focus:ring-blue-400 focus:outline-none shadow-sm"
+            whileFocus={{ scale: 1.02 }}
+          />
+
+          <motion.textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Write your note here..."
+            className="w-full h-36 p-4 border border-gray-300 rounded-xl text-gray-800 placeholder-gray-400 focus:ring-2 focus:ring-blue-400 focus:outline-none shadow-sm resize-none"
+            whileFocus={{ scale: 1.02 }}
+          />
+
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.2 }}
+            className="flex flex-wrap gap-3 mt-4 items-center"
+          >
+            {!isRecording ? (
+              <motion.button
+                onClick={startRecording}
+                whileTap={{ scale: 0.95 }}
+                className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl shadow hover:bg-blue-700"
+              >
+                <Mic size={18} /> Record
+              </motion.button>
+            ) : (
+              <motion.button
+                onClick={stopRecording}
+                whileTap={{ scale: 0.95 }}
+                className="flex items-center gap-2 px-5 py-2.5 bg-red-500 text-white rounded-xl shadow hover:bg-red-600"
+              >
+                <StopCircle size={18} /> Stop
+              </motion.button>
+            )}
+
+            <motion.label
+              whileTap={{ scale: 0.95 }}
+              className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white rounded-xl cursor-pointer shadow hover:bg-emerald-700"
+            >
+              <Image size={18} /> Upload
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleImageUpload}
+              />
+            </motion.label>
+
+            <motion.button
+              onClick={openDrawingPad}
+              whileTap={{ scale: 0.95 }}
+              className="flex items-center gap-2 px-5 py-2.5 bg-gray-800 text-white rounded-xl shadow hover:bg-gray-900"
+            >
+              <PenTool size={18} /> Draw
+            </motion.button>
+
+            <motion.div
+              className="flex items-center gap-2 border border-gray-300 rounded-xl px-3 py-2.5 shadow-sm bg-white"
+              whileHover={{ scale: 1.02 }}
+            >
+              <Clock size={18} className="text-gray-600" />
+              <input
+                type="datetime-local"
+                value={reminder}
+                onChange={(e) => setReminder(e.target.value)}
+                className="bg-transparent focus:outline-none text-gray-700"
+              />
+            </motion.div>
+
+            <motion.button
+              onClick={saveNote}
+              whileTap={{ scale: 0.95 }}
+              className="ml-auto flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-xl shadow hover:from-indigo-700 hover:to-blue-700"
+            >
+              <Save size={18} /> Save Note
+            </motion.button>
+          </motion.div>
+
+          {(imageURL || drawingURL || audioURL) && (
+            <motion.div
+              className="mt-6 space-y-3"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.3 }}
+            >
+              {imageURL && (
+                <img
+                  src={imageURL}
+                  alt="Preview"
+                  className="w-full rounded-xl border border-gray-200 shadow-md"
+                />
+              )}
+              {drawingURL && (
+                <img
+                  src={drawingURL}
+                  alt="Drawing"
+                  className="w-full rounded-xl border border-gray-200 shadow-md"
+                />
+              )}
+              {audioURL && (
+                <audio controls className="w-full rounded-md mt-3">
+                  <source src={audioURL} type="audio/mp3" />
+                </audio>
+              )}
+            </motion.div>
+          )}
+        </div>
+      </motion.div>
+    </motion.div>
   );
 }
